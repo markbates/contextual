@@ -3,6 +3,7 @@ package contextual
 import (
 	"bytes"
 	"context"
+	"io"
 )
 
 func String(ctx context.Context) (string, error) {
@@ -16,4 +17,10 @@ func String(ctx context.Context) (string, error) {
 	}
 
 	return bb.String(), nil
+}
+
+func Print(ctx context.Context, w io.Writer) error {
+	p := &Printer{}
+
+	return p.Print(ctx, w)
 }
