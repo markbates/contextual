@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"reflect"
-	"sort"
 )
 
 type Printer struct {
@@ -27,9 +26,9 @@ func (p *Printer) Print(ctx context.Context) error {
 	}
 
 	chain := p.chain
-	sort.Slice(chain, func(i, j int) bool {
-		return chain[i].String() < chain[j].String()
-	})
+	// sort.Slice(chain, func(i, j int) bool {
+	// 	return chain[i].String() < chain[j].String()
+	// })
 
 	var spaces Tabs
 
@@ -37,7 +36,7 @@ func (p *Printer) Print(ctx context.Context) error {
 		s := c.String()
 
 		if i > 0 {
-			s = "." + s
+			s = "--> " + s
 		}
 
 		line := fmt.Sprintf("%s%s\n", spaces, s)

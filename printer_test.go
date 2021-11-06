@@ -50,13 +50,13 @@ func Test_Printer(t *testing.T) {
 
 	fmt.Println(act)
 
-	exp := `Background
-	.WithCancel
-		.WithCancel
-			.WithCancel
-				.WithTimeout(deadline: TIME)
-					.WithValue(key: id, value: 42)
-						.WithValue(key: name, value: mary)
-							.WithValue(key: request_id, value: abc)`
+	exp := `WithValue(key: request_id, value: abc)
+	--> WithCancel
+		--> WithCancel
+			--> WithValue(key: name, value: mary)
+				--> WithTimeout(deadline: TIME)
+					--> WithCancel
+						--> WithValue(key: id, value: 42)
+							--> Background`
 	r.Equal(exp, act)
 }
