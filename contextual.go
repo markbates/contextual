@@ -9,9 +9,11 @@ import (
 func String(ctx context.Context) (string, error) {
 	bb := &bytes.Buffer{}
 
-	p := &Printer{}
+	p := &Printer{
+		Writer: bb,
+	}
 
-	err := p.Print(ctx, bb)
+	err := p.Print(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -20,7 +22,9 @@ func String(ctx context.Context) (string, error) {
 }
 
 func Print(ctx context.Context, w io.Writer) error {
-	p := &Printer{}
+	p := &Printer{
+		Writer: w,
+	}
 
-	return p.Print(ctx, w)
+	return p.Print(ctx)
 }

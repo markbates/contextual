@@ -5,113 +5,151 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
-	"strings"
-	"time"
+	"reflect"
+	"sort"
 )
 
 type Printer struct {
-	TimePrinter TimePrinter
+	io.Writer
+	DeadlinePrinter DeadlinePrinter
+	chain           []fmt.Stringer
 }
 
-func (p *Printer) Print(ctx context.Context, w io.Writer) error {
-	if w == nil {
-		w = os.Stdout
+func (p *Printer) Print(ctx context.Context) error {
+	if p.Writer == nil {
+		p.Writer = os.Stdout
 	}
 
-	s := fmt.Sprintf("%v", ctx)
+	err := p.printCtx(ctx)
 
-	err := p.format(w, Tabs{}, s)
 	if err != nil {
 		return err
+	}
+
+	chain := p.chain
+	sort.Slice(chain, func(i, j int) bool {
+		return chain[i].String() < chain[j].String()
+	})
+
+	var spaces Tabs
+
+	for i, c := range chain {
+		s := c.String()
+
+		if i > 0 {
+			s = "." + s
+		}
+
+		line := fmt.Sprintf("%s%s\n", spaces, s)
+		fmt.Fprint(p.Writer, line)
+		spaces = spaces.Increment()
 	}
 
 	return nil
 }
 
-func (p *Printer) format(w io.Writer, spaces Tabs, s string) error {
-	const match = `\.[Background|WithValue|WithCancel|WithDeadline].+`
-	rx, err := regexp.Compile(match)
+func (p *Printer) printCtx(ctx context.Context) error {
+	rv := reflect.ValueOf(ctx)
+	rt := rv.Type()
+	rvi := reflect.Indirect(rv)
 
-	if err != nil {
-		return err
-	}
-	_ = rx
+	name := fmt.Sprintf("%v", rt)
 
-	loc := rx.FindStringIndex(s)
-	if len(loc) == 0 {
-		return nil
-	}
-
-	cur, next := s[:loc[0]], s[loc[0]+1:]
-
-	if len(spaces) > 0 {
-		cur = "." + cur
+	switch name {
+	case "*context.valueCtx":
+		return p.withValue(rvi)
+	case "*context.cancelCtx":
+		return p.withCancel(rvi)
+	case "*context.timerCtx":
+		return p.withTimer(rvi)
+	case "*context.emptyCtx":
+		return p.withEmpty(rvi)
 	}
 
-	if strings.HasPrefix(cur, ".WithDeadline") {
-		var err error
-		cur, err = p.deadline(cur)
+	return fmt.Errorf("!!unexpected type %v", name)
+}
+
+func (p *Printer) withTimer(rv reflect.Value) error {
+	tc := TimerCtx{}
+
+	f := rv.FieldByName("deadline")
+	if !f.IsValid() {
+		return fmt.Errorf("deadline field not found")
+	}
+
+	s := fmt.Sprintf("%+v", f)
+	tc.Deadline = s
+
+	if fn := p.DeadlinePrinter; fn != nil {
+		x, err := fn(f)
 		if err != nil {
 			return err
 		}
+		tc.Deadline = x
 	}
 
-	fmt.Fprintf(w, "%+v%s\n", spaces, cur)
+	p.chain = append(p.chain, tc)
 
-	return p.format(w, spaces.Increment(), next)
+	f = rv.FieldByName("Context")
+	if !f.IsValid() {
+		return nil
+	}
+
+	ctx, ok := f.Interface().(context.Context)
+	if !ok {
+		return fmt.Errorf("unexpected type %v", f.Type())
+	}
+	return p.printCtx(ctx)
 }
 
-func (p *Printer) deadline(s string) (string, error) {
+func (p *Printer) withEmpty(rv reflect.Value) error {
 
-	const match = `.WithDeadline\((.+)\)`
+	p.chain = append(p.chain, EmptyCtx{})
 
-	rx, err := regexp.Compile(match)
-	if err != nil {
-		return s, err
-	}
-
-	res := rx.FindStringSubmatch(s)
-	if len(res) == 0 {
-		return s, nil
-	}
-
-	second := res[1]
-
-	trx, err := regexp.Compile(`(\sm=.+$)`)
-	if err != nil {
-		return s, err
-	}
-
-	trail := trx.FindString(second)
-	clean := strings.TrimSuffix(second, trail)
-
-	tf := `2006-01-02 15:04:05.999999999 -0700 MST`
-
-	t, err := time.Parse(tf, clean)
-	if err != nil {
-		return s, err
-	}
-
-	fn := p.TimePrinter
-	if fn == nil {
-		fn = RFC3339Nano
-	}
-
-	ts, err := fn(t)
-	if err != nil {
-		return s, err
-	}
-
-	return fmt.Sprintf(".WithDeadline(%s)", ts), nil
+	return nil
 }
 
-/*
-context
-	.Background
-		.WithValue(type string, val 42)
-			.WithCancel
-				.WithDeadline(2021-11-05 16:41:02.118779 -0400 EDT m=+1.002606096 [999.63316ms])
-					.WithValue(type string, val mary)
-						.WithCancel
-*/
+func (p *Printer) withCancel(rv reflect.Value) error {
+	cc := CancelCtx{}
+
+	f := rv.FieldByName("Context")
+	if !f.IsValid() {
+		return nil
+	}
+
+	p.chain = append(p.chain, cc)
+	ctx, ok := f.Interface().(context.Context)
+	if !ok {
+		return fmt.Errorf("unexpected type %v", f.Type())
+	}
+
+	return p.printCtx(ctx)
+}
+
+func (p *Printer) withValue(rv reflect.Value) error {
+	vc := ValueCtx{}
+
+	f := rv.FieldByName("key")
+	if f.IsValid() {
+		vc.key = fmt.Sprintf("%v", f)
+	}
+
+	f = rv.FieldByName("val")
+	if f.IsValid() {
+		vc.val = fmt.Sprintf("%v", f)
+	}
+
+	p.chain = append(p.chain, vc)
+
+	f = rv.FieldByName("Context")
+	if !f.IsValid() {
+		return nil
+	}
+
+	ctx, ok := f.Interface().(context.Context)
+	if !ok {
+		return fmt.Errorf("unexpected type %v", f.Type())
+	}
+
+	return p.printCtx(ctx)
+}

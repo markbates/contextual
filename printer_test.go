@@ -3,6 +3,7 @@ package contextual
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_String(t *testing.T) {
+func Test_Printer(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -21,7 +22,7 @@ func Test_String(t *testing.T) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	ctx, cancel = context.WithTimeout(ctx, time.Second)
+	ctx, cancel = context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	ctx = context.WithValue(ctx, CtxKey("name"), "mary")
@@ -35,29 +36,27 @@ func Test_String(t *testing.T) {
 
 	bb := &bytes.Buffer{}
 	p := &Printer{
-		TimePrinter: func(t time.Time) (string, error) {
+		DeadlinePrinter: func(deadline interface{}) (string, error) {
 			return "TIME", nil
 		},
+		Writer: bb,
 	}
 
-	err := p.Print(ctx, bb)
+	err := p.Print(ctx)
 	r.NoError(err)
 
 	act := bb.String()
 	act = strings.TrimSpace(act)
 
-	// fmt.Println(act)
+	fmt.Println(act)
 
-	exp := `context
-	.Background
-		.WithValue(type contextual
-			.CtxKey, val 42)
-				.WithCancel
-					.WithDeadline(TIME)
-						.WithValue(type contextual
-							.CtxKey, val mary)
-								.WithCancel
-									.WithCancel
-										.WithValue(type contextual`
+	exp := `Background
+	.WithCancel
+		.WithCancel
+			.WithCancel
+				.WithTimeout(deadline: TIME)
+					.WithValue(key: id, value: 42)
+						.WithValue(key: name, value: mary)
+							.WithValue(key: request_id, value: abc)`
 	r.Equal(exp, act)
 }
