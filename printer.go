@@ -26,9 +26,6 @@ func (p *Printer) Print(ctx context.Context) error {
 	}
 
 	chain := p.chain
-	// sort.Slice(chain, func(i, j int) bool {
-	// 	return chain[i].String() < chain[j].String()
-	// })
 
 	var spaces Tabs
 
@@ -47,6 +44,12 @@ func (p *Printer) Print(ctx context.Context) error {
 	return nil
 }
 
+type unknown string
+
+func (u unknown) String() string {
+	return string(u)
+}
+
 func (p *Printer) printCtx(ctx context.Context) error {
 	rv := reflect.ValueOf(ctx)
 	rt := rv.Type()
@@ -63,9 +66,11 @@ func (p *Printer) printCtx(ctx context.Context) error {
 		return p.withTimer(rvi)
 	case "*context.emptyCtx":
 		return p.withEmpty(rvi)
+	default:
+		p.chain = append(p.chain, unknown(name))
 	}
 
-	return fmt.Errorf("!!unexpected type %v", name)
+	return nil
 }
 
 func (p *Printer) withTimer(rv reflect.Value) error {
