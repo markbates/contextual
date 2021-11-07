@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -32,6 +35,9 @@ func Test_Printer(t *testing.T) {
 	ctx, cancel = context.WithDeadline(ctx, time.Now().Add(time.Hour))
 	defer cancel()
 
+	ctx, cancel = signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	ctx = context.WithValue(ctx, CtxKey("request_id"), "abc")
 
 	bb := &bytes.Buffer{}
@@ -51,12 +57,14 @@ func Test_Printer(t *testing.T) {
 	fmt.Println(act)
 
 	exp := `WithValue(key: request_id, value: abc)
-	--> WithCancel
+	--> SignalCtx([]os.Signal{2, 15})
 		--> WithCancel
-			--> WithValue(key: name, value: mary)
-				--> WithTimeout(deadline: TIME)
-					--> WithCancel
-						--> WithValue(key: id, value: 42)
-							--> Background`
+			--> WithCancel
+				--> WithCancel
+					--> WithValue(key: name, value: mary)
+						--> WithTimeout(deadline: TIME)
+							--> WithCancel
+								--> WithValue(key: id, value: 42)
+									--> Background`
 	r.Equal(exp, act)
 }

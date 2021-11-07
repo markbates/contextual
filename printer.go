@@ -66,11 +66,50 @@ func (p *Printer) printCtx(ctx context.Context) error {
 		return p.withTimer(rvi)
 	case "*context.emptyCtx":
 		return p.withEmpty(rvi)
-	default:
-		p.chain = append(p.chain, unknown(name))
+	case "*signal.signalCtx":
+		return p.withSignal(rvi)
 	}
 
-	return nil
+	return p.unknown(rvi, name)
+}
+
+func (p *Printer) withSignal(rv reflect.Value) error {
+	sc := SignalCtx{}
+
+	f := rv.FieldByName("signals")
+
+	if f.IsValid() {
+		sc = SignalCtx(f)
+	}
+
+	p.chain = append(p.chain, sc)
+
+	f = rv.FieldByName("Context")
+	if !f.IsValid() {
+		return nil
+	}
+
+	ctx, ok := f.Interface().(context.Context)
+	if !ok {
+		return fmt.Errorf("unexpected type %v", f.Type())
+	}
+	return p.printCtx(ctx)
+}
+
+func (p *Printer) unknown(rv reflect.Value, name string) error {
+	u := unknown(name)
+	p.chain = append(p.chain, u)
+
+	f := rv.FieldByName("Context")
+	if !f.IsValid() {
+		return nil
+	}
+
+	ctx, ok := f.Interface().(context.Context)
+	if !ok {
+		return fmt.Errorf("unexpected type %v", f.Type())
+	}
+	return p.printCtx(ctx)
 }
 
 func (p *Printer) withTimer(rv reflect.Value) error {
