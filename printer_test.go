@@ -65,6 +65,6 @@ func Test_Printer(t *testing.T) {
 						--> WithTimeout(deadline: TIME)
 							--> WithCancel
 								--> WithValue(key: id, value: 42)
-									--> Background`
+									--> context.backgroundCtx`
 	r.Equal(exp, act)
 }
